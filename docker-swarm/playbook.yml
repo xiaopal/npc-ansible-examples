@@ -1,0 +1,33 @@
+---
+# Setup npc instances
+- hosts: localhost
+  gather_facts: 'no'
+  pre_tasks:
+    - include_vars: npc.yml
+  roles: 
+    - xiaopal.npc_setup
+    - xiaopal.npc_docker
+  vars:
+    npc_setup:
+      # log: npc_setup.log
+      staging: true
+      actions:
+        - destroy
+        - update
+        - create
+      group_by:
+        updating: npc_leave
+        destroying: npc_leave
+    docker_swarm:
+      nodes: []
+      leaves: '{{ groups["npc_leave"] | default([]) }}' 
+  tasks:
+    - debug: msg=docker_swarm={{docker_swarm}}
+    - meta: refresh_inventory
+
+- hosts: docker
+  roles:
+    - xiaopal.npc_docker
+  vars:
+    docker_engine: '17.03.2'
+    docker_swarm: 

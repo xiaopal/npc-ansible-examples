@@ -1,0 +1,4 @@
+---
+# from galaxy
+- src: xiaopal.npc_setup
+- src: xiaopal.npc_docker

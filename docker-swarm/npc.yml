@@ -1,0 +1,41 @@
+---
+npc_config:
+  instance_image: Debian 8.6
+  instance_type:
+    cpu: 1
+    memory: 2G 
+  ssh_key: 
+    name: ansible
+npc_instances: 
+  - &manager 
+    name: 'docker-manager'
+    groups:
+      - docker
+      - manager
+    ssh_keys:
+      - Xiaohui-GRAYPC
+    vars:
+      swarm_node:
+        role: worker
+        availability: drain
+  - &worker 
+    <<: *manager 
+    name: 'docker-worker-{1..3}'
+    groups:
+      - docker
+      - worker
+    vars:
+      swarm_node:
+        role: worker
+  - <<: *worker
+    name: 'docker-ingress-{1..3}'
+    groups:
+      - docker
+      - worker
+      - ingress
+    vars:
+      engine_config:
+      swarm_node:
+        role: manager
+        labels: 
+          - npc.ingress
