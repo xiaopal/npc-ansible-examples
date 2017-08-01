@@ -31,3 +31,7 @@
   vars:
     docker_engine: '17.03.2'
     docker_swarm: 
+      stack:
+        files:
+          - stacks/*.yml
+        removes: true

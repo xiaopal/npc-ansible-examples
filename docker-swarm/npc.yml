@@ -7,19 +7,15 @@ npc_config:
   ssh_key: 
     name: ansible
 npc_instances: 
-  - &manager 
-    name: 'docker-manager'
+  - name: 'docker-manager-{1..3}'
     groups:
       - docker
       - manager
-    ssh_keys:
-      - Xiaohui-GRAYPC
     vars:
       swarm_node:
-        role: worker
+        role: manager
         availability: drain
   - &worker 
-    <<: *manager 
     name: 'docker-worker-{1..3}'
     groups:
       - docker
@@ -27,6 +23,8 @@ npc_instances:
     vars:
       swarm_node:
         role: worker
+        labels:
+          - npc.worker=Y
   - <<: *worker
     name: 'docker-ingress-{1..3}'
     groups:
@@ -34,8 +32,8 @@ npc_instances:
       - worker
       - ingress
     vars:
-      engine_config:
       swarm_node:
-        role: manager
+        role: worker
         labels: 
-          - npc.ingress
+          - npc.worker=Y
+          - npc.ingress=Y
