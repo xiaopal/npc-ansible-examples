@@ -1,0 +1,147 @@
+---
+- hosts: localhost
+  gather_facts: 'no'
+  tasks:
+    - apt:
+        name: python-netaddr
+        state: present
+
+# 配置跳板机（兼出站网关）
+- hosts: localhost
+  gather_facts: 'no'
+  vars:
+    npc_config:
+      ssh_key:
+        name: kubernetes
+    npc_instances:
+      - name: 'kube-gw'
+        present: true
+        groups:
+          - gw
+          - jump
+        ssh_host_by: wan_ip
+        wan_ip: any
+        wan_capacity: 100m
+        instance_image: Debian 8.6
+        instance_type:
+          cpu: 2
+          memory: 4G
+  roles: 
+    - xiaopal.npc_setup
+- hosts: kube-gw
+  tasks:
+    - sysctl:
+        name: net.ipv4.ip_forward
+        value: 1
+        sysctl_set: yes
+        state: present
+        reload: yes
+    - iptables:
+        table: nat
+        chain: POSTROUTING
+        source: 10.173.0.0/16
+        destination: '10.173.0.0/16'
+        jump: ACCEPT
+    - iptables:
+        table: nat
+        chain: POSTROUTING
+        source: 10.173.0.0/16
+        jump: SNAT
+        to_source: '{{npc_instance.wan_ip}}'
+
+# 配置k8s集群
+- hosts: localhost
+  gather_facts: 'no'
+  vars:
+    npc_setup:
+      # log: npc_setup.log
+      actions: ["destroy", "update", "create"]
+    npc_config:
+      ssh_key:
+        name: kubernetes
+      default_instance_image: Debian 8.6
+      default_instance_type:
+        cpu: 4
+        memory: 8G
+      ssh_jump_host: kube-gw
+    npc_instances:
+      - name: 'kube-master-{1..2}'
+        present: true
+        groups:
+          - kube-master
+      - name: 'kube-etcd-{1..3}'
+        present: true
+        groups:
+          - etcd
+          - kube-node
+  roles: 
+    - xiaopal.npc_setup
+
+# 配置k8s集群节点默认网关到跳板机
+- hosts: kube-gw
+  tasks:
+    - with_items: '{{groups["k8s-cluster"]}}'
+      shell: route del default; route add default gw {{npc_instance.lan_ip}}
+      delegate_to: '{{item}}'
+
+# 初始化k8s集群节点
+- hosts: k8s-cluster
+  vars:
+    docker_repo_info:
+      pkg_repo: apt_repository
+      repos:
+        - >
+          deb http://mirrors.aliyun.com/docker-engine/apt/repo
+          {{ ansible_distribution|lower }}-{{ ansible_distribution_release|lower }}
+          main
+    docker_config: 
+      registry-mirrors: 
+        - http://hub-mirror.c.163.com/
+  tasks:
+    - sysctl:
+        name: net.ipv4.ip_forward
+        value: 1
+        sysctl_set: yes
+        state: present
+        reload: yes
+    - apt: name=sudo state=present update_cache=yes
+    - file: state=directory recurse=yes path=/etc/docker
+    - copy: dest=/etc/docker/daemon.json content="{{ docker_config | to_json }}"        
+    - tags: facts
+      set_fact:
+        docker_repo_info: '{{docker_repo_info}}'
+        etcd_image_repo: "hub.c.163.com/xiaopal/quay.io/coreos/etcd"
+        flannel_image_repo: "hub.c.163.com/xiaopal/quay.io/coreos/flannel"
+        calico_rr_image_repo: "hub.c.163.com/xiaopal/quay.io/calico/routereflector"
+        pod_infra_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/pause-amd64"
+        netcheck_agent_img_repo: "hub.c.163.com/xiaopal/quay.io/l23network/k8s-netchecker-agent"
+        kubedns_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/k8s-dns-kube-dns-amd64"
+        dnsmasq_nanny_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/k8s-dns-dnsmasq-nanny-amd64"
+        dnsmasq_sidecar_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/k8s-dns-sidecar-amd64"
+        hyperkube_image_repo: "hub.c.163.com/xiaopal/quay.io/coreos/hyperkube"
+        netcheck_server_img_repo: "hub.c.163.com/xiaopal/quay.io/l23network/k8s-netchecker-server"
+        kubednsautoscaler_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/cluster-proportional-autoscaler-amd64"
+        elasticsearch_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/elasticsearch"
+        fluentd_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/fluentd-elasticsearch"
+        kibana_image_repo: "hub.c.163.com/xiaopal/gcr.io/google_containers/kibana"
+        tiller_image_repo: "hub.c.163.com/xiaopal/gcr.io/kubernetes-helm/tiller"        
+
+# 调用 kubespray，安装k8s集群
+- include: kubespray/cluster.yml
+
+# 恢复k8s集群节点默认网关
+- hosts: k8s-cluster
+  tasks:
+    - shell: route del default; route add default gw 10.173.32.1
+
+# 删除跳板机
+- hosts: localhost
+  gather_facts: 'no'
+  vars:
+    npc_config:
+      ssh_key:
+        name: kubernetes
+    npc_instances:
+      - name: 'kube-gw'
+        present: false
+

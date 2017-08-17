@@ -10,7 +10,7 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.labels.npc.worker == Y
+          - node.labels.npc.worker == load
 
   grafana:
     image: grafana/grafana
@@ -24,7 +24,7 @@ services:
       replicas: 1
       placement:
         constraints:
-          - node.labels.npc.ingress == Y
+          - node.labels.npc.worker == ingress
 
   cadvisor:
     image: google/cadvisor

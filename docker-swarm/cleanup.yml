@@ -1,0 +1,13 @@
+---
+# Setup npc instances
+- hosts: localhost
+  gather_facts: 'no'
+  roles: 
+    - xiaopal.npc_setup
+  vars:
+    npc_config:
+      ssh_key: 
+        name: docker
+    npc_instances: []
+    npc_setup:
+      absent: destroy

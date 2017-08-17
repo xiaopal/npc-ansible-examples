@@ -1,0 +1,22 @@
+version: "3.3"
+
+services:
+  registry:
+    restart: always
+    image: registry:2
+    ports:
+      - 0.0.0.0:5000:5000
+    volumes:
+      - /var/lib/registry:/var/lib/registry
+    configs:
+      - source: registry_config
+        target: /etc/docker/registry/config.yml
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.labels.npc.registry == Y
+
+configs:
+  registry_config:
+    file: ./registry.config

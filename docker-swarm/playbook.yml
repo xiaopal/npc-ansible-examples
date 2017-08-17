@@ -2,36 +2,151 @@
 # Setup npc instances
 - hosts: localhost
   gather_facts: 'no'
-  pre_tasks:
-    - include_vars: npc.yml
   roles: 
     - xiaopal.npc_setup
-    - xiaopal.npc_docker
   vars:
+    npc_config:
+      ssh_key: 
+        name: docker
+      default_instance_image: Debian 8.6
+      default_instance_type:
+        cpu: 1
+        memory: 2G 
+      ssh_jump_host: docker-gateway
+    npc_volumes: 
+      - name: docker-hd-{m1,w{1..2},gw1,ig{1..2}}
+        capacity: 50G
+        present: true
+        path: /var/lib/docker
+        fstype: ext4
+      - name: docker-hd-registry
+        capacity: 50G
+        present: true
+        path: /var/lib/registry
+        fstype: ext4
+    npc_instances: 
+      - name: 'docker-mg'
+        groups:
+          - docker
+          - manager
+        volumes:
+          - docker-hd-m1
+        vars:
+          swarm_node:
+            role: manager
+            labels:
+              - npc.manager=Y
+      - name: 'docker-wl-{1..2}'
+        groups:
+          - docker
+          - worker
+        volumes:
+          - '*:docker-hd-w{1..2}'
+        vars:
+          swarm_node:
+            role: worker
+            labels:
+              - npc.worker=load
+      - name: 'docker-ingress-{a,b}'
+        groups:
+          - docker
+          - worker
+          - ingress
+        volumes:
+          - '*:docker-hd-ig{1,2}'
+        vars:
+          swarm_node:
+            role: worker
+            labels: 
+              - npc.worker=ingress
+      - name: docker-gateway
+        wan_ip: any
+        wan_capacity: 10m
+        ssh_host_by: wan_ip
+        ssh_jump_host: false
+        groups:
+          - docker
+          - worker
+          - gateway
+          - registry
+        volumes:
+          - docker-hd-gw1
+          - docker-hd-registry
+        vars:
+          swarm_node:
+            role: worker
+            labels: 
+              - npc.worker=gateway
+              - npc.registry=Y
     npc_setup:
-      # log: npc_setup.log
-      staging: true
       actions:
         - destroy
         - update
         - create
-      group_by:
-        updating: npc_leave
-        destroying: npc_leave
-    docker_swarm:
-      nodes: []
-      leaves: '{{ groups["npc_leave"] | default([]) }}' 
+    # log: npc_setup.log
   tasks:
-    - debug: msg=docker_swarm={{docker_swarm}}
-    - meta: refresh_inventory
 
+# 配置出站网关
+- hosts: gateway
+  tasks:
+    - sysctl:
+        name: net.ipv4.ip_forward
+        value: 1
+        sysctl_set: yes
+        state: present
+        reload: yes
+    - iptables:
+        table: nat
+        chain: POSTROUTING
+        source: 10.173.0.0/16
+        destination: '10.173.0.0/16'
+        jump: ACCEPT
+    # 配置SNAT
+    - iptables:
+        table: nat
+        chain: POSTROUTING
+        source: 10.173.0.0/16
+        jump: SNAT
+        to_source: '{{npc_instance.wan_ip}}'
+    - with_inventory_hostnames: 
+        - docker:!gateway
+      shell: ip route del default dev eth0; ip route add default via {{npc_instance.lan_ip|quote}} dev eth0
+      delegate_to: '{{item}}'
+
+# 配置docker节点
 - hosts: docker
   roles:
     - xiaopal.npc_docker
   vars:
-    docker_engine: '17.03.2'
+  # docker_engine: '17.03.2'
+    docker_engine: '17.06'
+    engine_config:
+      log-driver: json-file
+      log-opts: 
+        max-size: 10m
+        max-file: '3'
+      registry-mirrors: '{{ groups["registry"]
+        | map("extract",hostvars,["npc_instance","lan_ip"])
+        | map("regex_replace", "(.*)", "http://\1:5000/")
+        | list }}'
     docker_swarm: 
+      # 同步 stacks
       stack:
         files:
-          - stacks/*.yml
+          - stacks/*.*
+        include: '*.yml'
         removes: true
+  pre_tasks:
+    - with_items: '{{(npc_instance.volumes|default({})).values()}}'
+      filesystem:
+        dev: '{{item.device}}'
+        fstype: '{{item.fstype|default("ext4",true)}}'
+        resizefs: true
+    - with_items: '{{(npc_instance.volumes|default({})).values()}}'
+      mount: 
+        path: '{{item.path|default("/volumes/"~item.name, true)}}'
+        src: '{{item.device}}'
+        fstype: '{{item.fstype|default("ext4",true)}}'
+        state: mounted
+    # 提前创建docker0（蜂巢外网路由规则可能导致安装后dockerd首次启动不能创建docker0网桥）
+    - shell: ip link add docker0 type bridge && ip addr add 172.17.0.0/16 dev docker0 || true
