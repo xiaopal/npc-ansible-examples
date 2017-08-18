@@ -62,4 +62,5 @@
   roles:
     - lb-nginx
   tasks:
-    - debug: msg=site deployed, addr=http://{{npc_instance.wan_ip}}/
+    - debug: 
+        msg: site deployed, addr=http://{{npc_instance.wan_ip}}/
