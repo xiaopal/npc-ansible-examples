@@ -1,0 +1,65 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: 'no'
+  roles: 
+    - role: xiaopal.npc_setup
+      npc_config:
+        ssh_key: 
+          name: tomcat
+        default_instance_image: Centos 6.7
+        default_instance_type:
+          cpu: 1
+          memory: 2G 
+        ssh_jump_host: tomcat-lb-server
+      npc_instances: 
+        - name: 'tomcat-lb-server'
+          groups:
+            - lb_servers
+          wan_ip: any
+          wan_capacity: 10m
+          ssh_host_by: wan_ip
+          ssh_jump_host: false
+        - name: 'tomcat-server-{1..2}'
+          #zone: '*:cn-east-1{a,b}'
+          groups:
+            - backend_servers
+        - name: 'tomcat-memcached-{1..2}'
+          #zone: '*:cn-east-1{a,b}'
+          groups:
+            - memcached_servers
+  tasks:
+    - wait_for: port=22 host="{{npc.instances['tomcat-lb-server'].wan_ip}}" search_regex=OpenSSH delay=5
+
+- hosts: all
+  remote_user: root
+  pre_tasks:
+    - blockinfile:
+        dest: /etc/hosts
+        block: |
+          {% for host in ansible_play_hosts %}{{ hostvars[host].npc_instance.lan_ip }} {{ host }}
+          {% endfor %}
+    - lineinfile:
+        dest: /etc/cloud/cloud.cfg
+        regexp: '^manage_etc_hosts\:'
+        line: 'manage_etc_hosts: false'          
+  roles:
+    - common
+  
+
+- hosts: backend_servers
+  remote_user: root
+  roles:
+    - tomcat
+
+- hosts: memcached_servers
+  remote_user: root
+  roles:
+    - memcached
+
+- hosts: lb_servers
+  remote_user: root
+  roles:
+    - lb-nginx
+  tasks:
+    - debug: msg=site deployed, addr=http://{{npc_instance.wan_ip}}/
