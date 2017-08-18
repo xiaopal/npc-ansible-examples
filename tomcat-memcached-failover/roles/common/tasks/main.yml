@@ -3,9 +3,9 @@
   copy: src={{item.src}} dest={{item.dest}}
   notify: yum makecache
   with_items:
-    - { src: 'files/RPM-GPG-KEY-EPEL-6', dest: '/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-6' }  
-    - { src: 'files/Centos-6.repo', dest: '/etc/yum.repos.d/CentOS-Base.repo' }  
-    - { src: 'files/epel.repo', dest: '/etc/yum.repos.d/epel.repo' }  
+    - { src: 'RPM-GPG-KEY-EPEL-6', dest: '/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-6' }  
+    - { src: 'Centos-6.repo', dest: '/etc/yum.repos.d/CentOS-Base.repo' }  
+    - { src: 'epel.repo', dest: '/etc/yum.repos.d/epel.repo' }  
 
 - meta: flush_handlers
 
