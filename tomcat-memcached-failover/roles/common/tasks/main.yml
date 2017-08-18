@@ -1,7 +1,7 @@
 ---
 - name: Setup repo mirrors
   copy: src={{item.src}} dest={{item.dest}}
-  notify: yum makecache
+  notify: yum clean all
   with_items:
     - { src: 'RPM-GPG-KEY-EPEL-6', dest: '/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-6' }  
     - { src: 'Centos-6.repo', dest: '/etc/yum.repos.d/CentOS-Base.repo' }  

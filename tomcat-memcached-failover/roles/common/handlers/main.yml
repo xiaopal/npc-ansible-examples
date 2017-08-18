@@ -1,5 +1,5 @@
 ---
 - name: restart iptables
   service: name=iptables state=restarted
-- name: yum makecache
-  command: yum makecache
+- name: yum clean all
+  command: yum clean all
