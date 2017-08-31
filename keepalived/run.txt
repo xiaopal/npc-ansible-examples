@@ -1,0 +1,6 @@
+docker run --rm \
+    -e NPC_API_KEY=<API_KEY> \
+    -e NPC_API_SECRET=<API_SECRET> \
+    -e NPC_SETUP_ONCE=Y \
+    -v $PWD/keepalived.yml:/playbooks/keepalived.yml \
+    xiaopal/npc_setup
